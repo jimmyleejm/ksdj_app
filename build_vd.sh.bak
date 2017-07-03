@@ -1,0 +1,222 @@
+#!/bin/bash
+
+VODPRJ_PATH=`pwd`
+OUTPUT_PATH=$VODPRJ_PATH/output/
+
+automake --version &>/dev/null
+if [ $? != 0 ]; then
+	echo "Please install 'automake' on your host."
+	exit 1
+fi
+
+autoconf --version &>/dev/null
+if [ $? != 0 ]; then
+        echo "Please install 'autoconf' on your host."
+        exit 1
+fi
+
+libtool --version &>/dev/null
+if [ $? != 0 ]; then
+        echo "Please install 'libtool' on your host."
+        exit 1
+fi
+
+if [ $# == 0 ]; then
+	echo "Please give argument to build VDS_V1 or VDC_V1 project"
+	echo "Usage: ./build.sh VDS_V1 or VDC_V1"
+	exit 1
+else
+	PRJNAME=$1
+	if [ $# == 1 ]; then 
+		RemotePath="0"
+		INSTALL_PATH=$OUTPUT_PATH/.install/$PRJNAME
+		BUILD_PATH=$OUTPUT_PATH/$PRJNAME
+		echo "Uncompress $INSTALL_PATH"
+	elif [ $# == 2 ]; then
+	        if [ -d $2 ]; then
+		        INSTALL_PATH=$2
+			RemotePath="1"	
+	                BUILD_PATH=$INSTALL_PATH/../../$PRJNAME
+		else
+			echo "The install path is invalid."
+	                exit 1
+		fi
+	else
+		echo "[Fail] To many parameters."
+		exit 1
+	fi
+fi
+
+NAND1_PATH=$BUILD_PATH/nand1-1
+NAND2_PATH=$BUILD_PATH/nand1-2
+
+export INSTALL_PATH=$INSTALL_PATH
+
+export LDFLAGS="-L$INSTALL_PATH/lib -L/usr/local/arm_linux_4.2/arm-none-linux-gnueabi/lib"
+export CPPFLAGS="-I$INSTALL_PATH/include"
+export LIBS="-ldl -lpthread -leXosip2 -losipparser2 -losip2 -lavcodec -lavutil -lswscale -lasound"
+
+if [ "$RemotePath" == "1" ]; then
+	# To decompress shared librery
+	rm -rf $VODPRJ_PATH/3rdlib
+	mkdir  $VODPRJ_PATH/3rdlib
+	if [ "$RemotePath" == "0" ]; then
+	     tar zxf $VODPRJ_PATH/PreBuildLib/"$PRJNAME"_3rdlib.tar.gz -C 3rdlib
+	     if [ "$?" != "0" ]; then
+		echo "Uncompress 3rd lib.... failure"
+		exit 1
+	     fi
+	fi
+fi
+
+case "$PRJNAME" in
+"VDS_V1")
+	if [ "$CFLAGS" != "" ]; then
+		export CFLAGS="-muclibc -O2 $CFLAGS -D__VIDEODOOR_S__ -D__H264_HW_ENCODER__ -D__ENABLE_RATE_CONTROL__"
+	else
+                export CFLAGS="-D__VIDEODOOR_S__ -D__H264_HW_ENCODER__ -D__ENABLE_RATE_CONTROL__"
+	fi
+
+	;;
+
+"VDC_V1")
+        if [ "$CFLAGS" != "" ]; then
+                export CFLAGS="-muclibc -O2 $CFLAGS -D__VIDEODOOR_C__ -D__H264_HW_ENCODER__ -D__ENABLE_RATE_CONTROL__"
+        else
+                export CFLAGS="-D__VIDEODOOR_C__ -D__H264_HW_ENCODER__ -D__ENABLE_RATE_CONTROL__"
+        fi
+
+        ;;
+
+*)
+	echo "No such project name."
+	exit 1
+	;;
+esac
+
+if [ ! "$RemotePath" == "1" ]; then
+	rm -rf $INSTALL_PATH
+fi
+
+mkdir -p $INSTALL_PATH/lib/
+mkdir -p $INSTALL_PATH/include/
+mkdir -p $INSTALL_PATH/share/
+
+if [ ! "$RemotePath" == "1" ]; then
+	cp -af `pwd`/3rdlib/lib/*		$INSTALL_PATH/lib/
+	cp -af `pwd`/3rdlib/include/*		$INSTALL_PATH/include/
+	cp -af `pwd`/3rdlib/share/*		$INSTALL_PATH/share/
+fi
+
+if [ ! -d $NAND1_PATH ]; then
+	mkdir -p $NAND1_PATH
+fi
+
+if [ ! -d $NAND2_PATH ]; then
+	mkdir -p $NAND2_PATH
+fi
+
+if [ -f config.h ]; then
+	make distclean
+fi
+
+./configure --prefix=$INSTALL_PATH \
+            --host=arm-none-linux-gnueabi \
+	    --build=i486-linux-gnu \
+	    --disable-silent-rules \
+	    --disable-dependency-tracking  \
+	    --disable-nls \
+	    --enable-shared=yes \
+	    --enable-static=no \
+	    --enable-fast-install=yes \
+	    --disable-libtool-lock \
+	    --enable-rpath \
+	    --enable-console_ui=yes \
+	    --enable-notify=no \
+	    --disable-relativeprefix \
+	    --enable-date \
+	    --disable-ipv6 \
+	    --disable-truespeech \
+	    --disable-nonstandard-gsm \
+	    --disable-rsvp \
+	    --disable-ssl \
+	    --enable-video \
+	    --enable-ffmpeg \
+	    --enable-alsa \
+	    --enable-debug=no \
+            --enable-msg-storage=no \
+	    --disable-zrtp \
+	    --disable-portaudio \
+	    --disable-strict \
+	    --enable-tunnel=no \
+	    --disable-external-ortp \
+	    --disable-tests \
+	    --enable-fixed-point=yes \
+            --disable-oss \
+	    --disable-artsc \
+	    --disable-macsnd \
+	    --disable-macaqsnd \
+	    --disable-pulseaudio \
+	    --disable-portaudio \
+	    --disable-gsm \
+            --enable-filters \
+            --disable-ntp-timestamp \
+	    --disable-theora \
+	    --disable-vp8 \
+            --with-gnu-ld \
+            --with-srtp=$INSTALL_PATH \
+            OSIP_LIBS="-L$INSTALL_PATH/lib" \
+            OSIP_CFLAGS="-I$INSTALL_PATH/include" \
+            ORTP_LIBS="-L$INSTALL_PATH/lib" \
+            ORTP_CFLAGS="-I$INSTALL_PATH/include" \
+	    FFMPEG_LIBS="-L$INSTALL_PATH/lib"\
+            FFMPEG_CFLAGS="-I$INSTALL_PATH/include" \
+	    SWSCALE_LIBS="-L$INSTALL_PATH/lib" \
+            SWSCALE_CFLAGS="-I$INSTALL_PATH/include"
+
+if [ $? -eq 0 ]; then
+        make 
+        if [ $? -eq 0 ]; then
+                make install
+		if [ "$?" == "0" ]; then
+			if [ ! -d $INSTALL_PATH/lib_back ]; then
+				mkdir -p $INSTALL_PATH/lib_back
+				cp -af $INSTALL_PATH/lib/.	$INSTALL_PATH/lib_back/.
+				rm -rf  $INSTALL_PATH/lib_back/lib*.la
+				rm -rf  $INSTALL_PATH/lib_back/lib*.a
+				rm -rf  $INSTALL_PATH/lib_back/terminfo
+				rm -rf  $INSTALL_PATH/lib_back/pkgconfig				
+			fi
+			# make 3rdlib file
+			if [ -d $INSTALL_PATH/lib_back ]; then 
+				echo "Building $PRJNAME lib_romfs.bin file ..."
+		                genromfs -f $NAND1_PATH/lib_romfs.bin           -d $INSTALL_PATH/lib_back
+				if [ ! "$?" == "0" ]; then
+					echo "Built $PRJNAME lib_romfs.bin file failure ..."
+				else
+					echo "Built $PRJNAME lib_romfs.bin file success ..."		
+				fi
+				rm -rf $INSTALL_PATH/lib_back 
+			fi  
+  
+                        cp -a $INSTALL_PATH/bin/linphonec	$NAND2_PATH/videodoor
+			if [ ! -d $NAND2_PATH/share ]; then
+				mkdir -p $NAND2_PATH/share
+			fi
+                        cp -a $INSTALL_PATH/share/sounds	$NAND2_PATH/share
+			#make videodoor iso file
+			echo "Building $PRJNAME videodoor.bin file ..."
+                        genromfs -f $NAND1_PATH/videodoor.bin	-d $NAND2_PATH/
+			if [ ! "$?" == "0" ]; then
+				echo "Built $PRJNAME videodoor.bin file failure ..."
+			else
+				echo "Built $PRJNAME videodoor.bin file success ..."		
+			fi   
+			exit 0
+		fi
+	else
+		exit 1
+	fi
+else
+	exit 1
+fi
